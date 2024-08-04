@@ -3,14 +3,14 @@ import warnings
 from queue import Queue
 from types import NoneType
 from typing import Optional, Dict, Tuple, List
+import libcst as cst
 
-from sessions import st
 from langchain_core.agents import AgentAction
 from langchain_core.callbacks import CallbackManagerForToolRun, AsyncCallbackManagerForToolRun
 from langchain_core.tools import BaseTool
 from langchain_experimental.tools import PythonAstREPLTool
 
-import libcst as cst
+from .sessions import st
 
 DESCRIPTION_HOOK_NAME = 'hook_update_variable_description'
 

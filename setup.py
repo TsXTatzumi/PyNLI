@@ -1,8 +1,8 @@
 from setuptools import setup
 
 setup(
-    name='PyNLI',
-    version='0.1.0',
+    name='Py2NL',
+    version='0.1.5',
     description='A natural language interface for Python',
     url='https://github.com/TsXTatzumi/PyNLI',
     author='Simeon Quant',
@@ -20,6 +20,7 @@ setup(
                       'pydantic~=2.7.0',
                       'libcst~=1.3.1',
                       'markdown~=3.6',
+                      'colorama==0.4.6',
                       ],
 
     classifiers=[

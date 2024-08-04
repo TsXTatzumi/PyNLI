@@ -1,6 +1,6 @@
 from typing import Any
 
-from solara_interface import Page, Board, Chat, get_data_container, View
+from .solara_interface import Page, Board, Chat, get_data_container, View
 
 def NLICall(key: str = None, **kwargs) -> Any:
     data = get_data_container(key)

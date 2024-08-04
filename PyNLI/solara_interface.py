@@ -10,11 +10,11 @@ from typing import List, Any as T
 
 from solara.components.file_drop import FileInfo
 
-from .config import default_config as config
-from .sessions import st, DataContainer
-from .extraction import extract_function, get_occurrences
-from .agent import AgentThread, parse_variables
-from .messages import *
+from config import default_config as config
+from sessions import st, DataContainer
+from extraction import extract_function, get_occurrences
+from agent import AgentThread, parse_variables
+from messages import *
 
 #%%
 def get_data_container(key):

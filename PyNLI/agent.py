@@ -18,10 +18,10 @@ from langchain_core.tools import Tool
 from langchain_core.utils import get_color_mapping
 from pydantic import Field, BaseModel
 
-from .prompts import get_agent_template, get_yes_no_template, get_detect_loop_template
-from .sessions import st
-from .config import default_config as config
-from .tools import HumanTool, LookAtVariable, PythonConsoleTool, DESCRIPTION_HOOK_NAME
+from prompts import get_agent_template, get_yes_no_template, get_detect_loop_template
+from sessions import st
+from config import default_config as config
+from tools import HumanTool, LookAtVariable, PythonConsoleTool, DESCRIPTION_HOOK_NAME
 
 
 class OutputFormat(BaseModel):

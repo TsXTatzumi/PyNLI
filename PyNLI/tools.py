@@ -10,7 +10,7 @@ from langchain_core.callbacks import CallbackManagerForToolRun, AsyncCallbackMan
 from langchain_core.tools import BaseTool
 from langchain_experimental.tools import PythonAstREPLTool
 
-from .sessions import st
+from sessions import st
 
 DESCRIPTION_HOOK_NAME = 'hook_update_variable_description'
 

@@ -73,34 +73,38 @@ def refresh_board():
     #     st.code(st.session_state.code, line_numbers=True)
 
 
-def add_rollback_button(chat_message, index):
+
+def undo_chat(data, index):
     def undo_chat():
-        st.session_state.messages = st.session_state.messages[:index]
-        st.session_state.python_console._run("reset -f")
-        st.session_state.python_console.history = []
-        # st.session_state.vars = st.session_state.python_console.locals
-        for message in st.session_state.messages:
+        data.messages = data.messages[:index]
+        data.python_console._run("reset -f")
+        data.python_console.history = []
+        data.vars.clear()
+        for message in data.messages:
             if "file" in message or "exception" in message:
                 continue
 
-            st.session_state.python_console.start_new_period()
-            for snipet in message['code']:
-                st.session_state.python_console._run(snipet)
+            if isinstance(message, HumanMessage):
+                data.python_console.start_new_period()
 
-        for i in reversed(range(len(st.session_state.messages))):
-            if 'AI-response' in st.session_state.messages[i]:
-                if "question" in st.session_state.messages[i]["AI-response"]:
-                    st.session_state.agent_thread.agent.init(st.session_state.messages[i]["AI-response"]["inputs"],
-                                                             st.session_state.messages[i]["AI-response"]["intermediate_steps"],
-                                                             st.session_state.messages[i]["AI-response"]["current_step"])
+            elif isinstance(message, AIMessage):
+                for snipet in message['code']:
+                    data.python_console._run(snipet)
+
+        for message in reversed(data.messages):
+            if isinstance(message, AIMessage):
+                if "question" in message:
+                    data.agent_thread.agent.init(message["inputs"],
+                                                 message["intermediate_steps"],
+                                                 message["current_step"])
 
                 break
 
-        st.session_state.agent_thread.agent.abort()
+        data.agent_thread.agent.abort()
 
-    with chat_message:
-        st.button('Rollback', key=f'rollback_{index}', on_click=undo_chat)
+        data.force_update()
 
+    return undo_chat
 
 def load_files(data, files: List[FileInfo]):
     def load_data_file(file: FileInfo):
@@ -327,6 +331,7 @@ def Board(data: DataContainer):
         make_module_checkbox(data, "NumPy", "import numpy as np")
         make_module_checkbox(data, "OpenCV", "import cv2 as cv")
         make_module_checkbox(data, "Pillow", "import PIL")
+#        make_module_checkbox(data, "matplotlib", "import matplotlib")
 
         solara.FileDownload(data=lambda: pickle.dumps(data.messages), filename=f'{data.key}.chat', label='Download Session')
 
@@ -393,10 +398,12 @@ def Chat(data: DataContainer):
         if user_message_count == 0 or not isinstance(data.messages[-1], HumanMessage):
             return
 
+        message = data.messages[-1]
+
         if 'temporary_message' not in data:
             data.python_console.start_new_period()
 
-        data.agent_thread.query_queue.put(data.messages[-1].content)
+        data.agent_thread.query_queue.put(message.content)
 
         if 'temporary_message' in data:
             message = data.temporary_message
@@ -436,7 +443,7 @@ def Chat(data: DataContainer):
                             border_radius="10px",
                     ):
                         solara.Markdown(message.content)
-                        solara.Button(f'Rollback')
+                        solara.Button(f'Rollback', on_click=undo_chat(data, i))
 
                 elif isinstance(message, AIMessage):
                     with solara.lab.ChatMessage(

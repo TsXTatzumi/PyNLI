@@ -14,13 +14,15 @@ setup(
                       'langchain-community~=0.2.9',
                       'langchain-experimental~=0.0.49',
                       'solara~=1.35.1',
-                      'pandas~=2.2.2',
-                      'opencv-python~=4.10.0.84',
-                      'Pillow~=10.4.0',
+                      'pandas',
+                      'opencv-python',
+                      'Pillow',
+                 #     'matplotlib',
                       'pydantic~=2.7.0',
                       'libcst~=1.3.1',
                       'markdown~=3.6',
                       'colorama==0.4.6',
+                      'pathlib',
                       ],
 
     classifiers=[

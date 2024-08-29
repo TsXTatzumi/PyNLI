@@ -1,5 +1,6 @@
 import ast
 import warnings
+from copy import copy
 from queue import Queue
 from types import NoneType
 from typing import Optional, Dict, Tuple, List
@@ -10,7 +11,7 @@ from langchain_core.callbacks import CallbackManagerForToolRun, AsyncCallbackMan
 from langchain_core.tools import BaseTool
 from langchain_experimental.tools import PythonAstREPLTool
 
-from sessions import st
+from .sessions import st
 
 DESCRIPTION_HOOK_NAME = 'hook_update_variable_description'
 
@@ -23,6 +24,7 @@ class DescriptionHookInserter(cst.CSTTransformer):
             description = ''
             if updated_node.trailing_whitespace.comment is not None:
                 description = updated_node.trailing_whitespace.comment.value[1:].strip()
+            description = description.replace("'", "\\'")
 
             log_stmt = cst.parse_module(f"{DESCRIPTION_HOOK_NAME}('{varname}', '{description}')").body
             return cst.FlattenSentinel([*log_stmt, updated_node])
@@ -187,7 +189,13 @@ class HumanTool(BaseTool):
     ) -> str:
         """Use the tool."""
         if not st.session_state[self.key].agent_thread.agent.reinit:
-            self.query_queue.put({'question': query, 'inputs': inputs, 'intermediate_steps': intermediate_steps, 'current_step': current_step, 'store_in_history': store_in_history})
+            tool_input = copy(current_step.tool_input)
+            tool_input.pop('current_step')
+            tool_input.pop('run_manager')
+            intermediate_step_list = []
+            for step in intermediate_steps:
+                intermediate_step_list.append(({"tool": step[0].tool, "tool_input": step[0].tool_input, "log": step[0].log}, step[1]))
+            self.query_queue.put({'question': query, 'inputs': inputs, 'intermediate_steps': intermediate_step_list, 'current_step': {'tool':"interact_with_human", 'tool_input':tool_input, 'log':current_step.log}, 'store_in_history': store_in_history})
         reply = self.answer_queue.get()
         return reply
 
@@ -196,7 +204,7 @@ class HumanTool(BaseTool):
     ) -> str:
         """Use the tool asynchronously."""
         if not st.session_state[self.key].agent_thread.agent.reinit:
-            self.query_queue.put({'question': query, 'inputs': inputs, 'intermediate_steps': intermediate_steps, 'current_step': current_step})
+            self.query_queue.put({'question': query, 'inputs': inputs, 'intermediate_steps': copy(intermediate_steps), 'current_step': copy(current_step)})
         reply = self.answer_queue.get()
         return reply
 

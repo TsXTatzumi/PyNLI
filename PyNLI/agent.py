@@ -18,10 +18,10 @@ from langchain_core.tools import Tool
 from langchain_core.utils import get_color_mapping
 from pydantic import Field, BaseModel
 
-from prompts import get_agent_template, get_yes_no_template, get_detect_loop_template
-from sessions import st
-from config import default_config as config
-from tools import HumanTool, LookAtVariable, PythonConsoleTool, DESCRIPTION_HOOK_NAME
+from .prompts import get_agent_template, get_yes_no_template, get_detect_loop_template
+from .sessions import st
+from .config import default_config as config
+from .tools import HumanTool, LookAtVariable, PythonConsoleTool, DESCRIPTION_HOOK_NAME
 
 
 class OutputFormat(BaseModel):
@@ -86,7 +86,11 @@ class AgentThread(threading.Thread):
         with get_openai_callback() as openai_stats:
             st.session_state[self.key].openai_stats = openai_stats
             while self.alive:
-                query = '' if self.agent.reinit else self.query_queue.get()
+                if self.agent.reinit:
+                    query = ''
+                else:
+                    query = self.query_queue.get()
+                print (query)
                 if query != '\\abort\\':
                     output = self.agent.invoke({'input': query})
                     if not self.agent.aborting:
@@ -232,10 +236,13 @@ class CustomAgentExecutor(AgentExecutor):
         self.key = key
 
 
-    def init(self, inputs:Dict[str, str], intermediate_steps:List[Tuple[AgentAction, str]], current_step:AgentAction):
+    def init(self, inputs:Dict[str, str], intermediate_steps:List[Tuple[dict, str]], current_step:dict):
         self.inputs_override = copy(inputs)
-        self.intermediate_steps_init = copy(intermediate_steps)
-        self.current_step = AgentAction(current_step.tool, current_step.tool_input, current_step.log)
+        self.intermediate_steps_init = []
+        for step in intermediate_steps:
+            self.intermediate_steps_init.append(AgentAction(tool=step[0]["tool"], tool_input=step[0]["tool_input"], log=step[0]["log"]), step[1])
+
+        self.current_step = current_step
         self.reinit = True
 
     def abort(self):
@@ -246,6 +253,7 @@ class CustomAgentExecutor(AgentExecutor):
         return super()._should_continue(iterations, time_elapsed) and not self.aborting
 
     def _should_confirm(self, iterations: int, time_elapsed: float) -> bool:
+        print(f'it: {iterations}')
         return not self.confirmed and iterations % config.iteration_confirmation_interval == 0
 
     def prep_inputs(self, inputs: Union[Dict[str, Any], Any]) -> Dict[str, str]:
@@ -300,9 +308,13 @@ class CustomAgentExecutor(AgentExecutor):
             while self._should_continue(iterations, time_elapsed) and not self._should_confirm(iterations, time_elapsed):
                 self.confirmed = False
                 if self.reinit:
+                    agent_action = AgentAction(tool=self.current_step['tool'], tool_input=self.current_step['tool_input'], log=self.current_step['log'])
+                    if isinstance(agent_action.tool_input, dict):
+                        agent_action.tool_input['current_step'] = agent_action
+                    self.current_step = agent_action
                     agent_step = self._perform_agent_action(name_to_tool_map, color_mapping, self.current_step, run_manager)
                     next_step_output = [(agent_step.action, agent_step.observation)]
-                    self.current_step = None
+
                     self.reinit = False
                 else:
                     next_step_output = self._take_next_step(
@@ -375,8 +387,17 @@ class CustomAgentExecutor(AgentExecutor):
         intermediate_steps: list,
         run_manager: Optional[CallbackManagerForChainRun] = None,
     ) -> Dict[str, Any]:
+        intermediate_step_list = []
+        for step in intermediate_steps:
+            tool_input = step[0].tool_input
+            if isinstance(tool_input, dict):
+                tool_input.pop('current_step')
+                tool_input.pop('run_manager')
+                tool_input.pop('intermediate_steps')
+            intermediate_step_list.append(({"tool": step[0].tool, "tool_input": tool_input, "log": step[0].log}, step[1]))
+
         final_output = super()._return(
-                    output, intermediate_steps, run_manager=run_manager
+                    output, intermediate_step_list, run_manager=run_manager
                 )
         final_output["inputs"] = inputs
         return final_output

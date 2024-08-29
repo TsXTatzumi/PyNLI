@@ -1,6 +1,10 @@
+import os
 import pickle
 import sys
 import asyncio
+import time
+from pathlib import Path
+
 import markdown
 import langchain
 import pandas as pd
@@ -8,13 +12,14 @@ import solara
 import solara.lab
 from typing import List, Any as T
 
+from langchain_core.agents import AgentAction
 from solara.components.file_drop import FileInfo
 
-from config import default_config as config
-from sessions import st, DataContainer
-from extraction import extract_function, get_occurrences
-from agent import AgentThread, parse_variables
-from messages import *
+from .config import default_config as config
+from .sessions import st, DataContainer
+from .extraction import extract_function, get_occurrences
+from .agent import AgentThread, parse_variables
+from .messages import *
 
 #%%
 def get_data_container(key):
@@ -80,6 +85,8 @@ def undo_chat(data, index):
         data.python_console._run("reset -f")
         data.python_console.history = []
         data.vars.clear()
+        if 'passed_external_vars' in data:
+            data.vars.update(data.passed_external_vars)
         for message in data.messages:
             if "file" in message or "exception" in message:
                 continue
@@ -112,13 +119,13 @@ def load_files(data, files: List[FileInfo]):
         if file['name'].endswith(".csv"):
             filedata = pd.read_csv(file['file_obj'] if config.lazy_files else file['data'])
             description = 'the dataframe of a CSV-file'
-            varname = file['name'].split('.')[0]
+            varname = file['name'].split('.')[0].replace(' ', '_').replace('-', '_').replace('.', '_').replace('/', '_').replace('(', '').replace(')', '').replace('[', '').replace(']', '').replace('{', '').replace('}', '').replace('__', '_').replace('__', '_')
             data.vars[varname] = filedata
             data.var_descriptions[varname] = description
         elif file['name'].endswith((".xls", ".xlsx")):
             filedata = pd.read_excel(file['file_obj'] if config.lazy_files else file['data'])
             description = 'Contains a dataframe for each sheet of an Excel-file'
-            varname = file['name'].split('.')[0]
+            varname = file['name'].split('.')[0].replace(' ', '_').replace('-', '_').replace('.', '_').replace('/', '_').replace('(', '').replace(')', '').replace('[', '').replace(']', '').replace('{', '').replace('}', '').replace('__', '_').replace('__', '_')
             data.vars[varname] = filedata
             data.var_descriptions[varname] = description
         else:
@@ -180,10 +187,19 @@ def make_module_checkbox(data, module_name, import_statement):
 
 
 def extract_function_and_display(data):
+    def offset_line_occurences(occurences, offset):
+        for i in range(len(occurences)):
+            occurence = list(occurences[i])
+            occurence[1] = occurence[1] + offset
+            occurences[i] = tuple(occurence)
+
     inputs = [input[:2] for input in data.inputs.value]
     outputs = [output[:2] for output in data.outputs.value]
     imports = '\n'.join(data.module_import_statements.values())
-    all_inputs, extracted_function = extract_function(f'{imports}\n{data.code}', data.key, inputs, outputs)
+    additional_lines = imports.count('\n') + 1
+    offset_line_occurences(inputs, additional_lines)
+    offset_line_occurences(outputs, additional_lines)
+    all_inputs, extracted_function = extract_function(f'{imports}\n{data.code}', data.key, inputs, outputs, False)
     data.function.value = DataContainer(code=extracted_function, callable=0)
     complied = compile(extracted_function, '', 'exec')
     exec(complied, sys.modules["__main__"].__dict__)
@@ -333,7 +349,7 @@ def Board(data: DataContainer):
         make_module_checkbox(data, "Pillow", "import PIL")
 #        make_module_checkbox(data, "matplotlib", "import matplotlib")
 
-        solara.FileDownload(data=lambda: pickle.dumps(data.messages), filename=f'{data.key}.chat', label='Download Session')
+        solara.FileDownload(data=lambda: get_session_data(data), filename=f'{data.key}.chat', label='Download Session')
 
 
         data.table_of_variables = f"""| Variable Name | Datatype | Description |
@@ -374,6 +390,12 @@ def Board(data: DataContainer):
 
     return board
 
+
+def get_session_data(data: DataContainer):
+    dumps = pickle.dumps(data.messages)
+    return dumps
+
+
 @solara.component
 def Chat(data: DataContainer):
     is_initialized, set_is_initialized = solara.use_state(False)
@@ -407,7 +429,7 @@ def Chat(data: DataContainer):
 
         if 'temporary_message' in data:
             message = data.temporary_message
-            del data.temporary_message
+            data.pop('temporary_message')
 
         #append_message(HumanMessage(content=message))
 
@@ -505,7 +527,7 @@ def View(data: DataContainer):
 
 @solara.component
 def Page():
-#     solara.Style(Path('webstuff/styles.css'))
+    solara.Style(Path('webstuff/styles.css'))
 #     solara.HTML(unsafe_innerHTML='''<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css">
 # <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 #

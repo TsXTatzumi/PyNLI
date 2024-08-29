@@ -240,7 +240,7 @@ class CustomAgentExecutor(AgentExecutor):
         self.inputs_override = copy(inputs)
         self.intermediate_steps_init = []
         for step in intermediate_steps:
-            self.intermediate_steps_init.append(AgentAction(tool=step[0]["tool"], tool_input=step[0]["tool_input"], log=step[0]["log"]), step[1])
+            self.intermediate_steps_init.append((AgentAction(tool=step[0]["tool"], tool_input=step[0]["tool_input"], log=step[0]["log"]), step[1]))
 
         self.current_step = current_step
         self.reinit = True

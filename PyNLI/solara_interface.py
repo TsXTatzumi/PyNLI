@@ -429,6 +429,8 @@ def Chat(data: DataContainer):
 
         if 'temporary_message' in data:
             message = data.temporary_message
+            data.messages.pop()
+            data.messages.pop()
             data.pop('temporary_message')
 
         #append_message(HumanMessage(content=message))

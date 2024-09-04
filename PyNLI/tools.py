@@ -16,6 +16,22 @@ from .sessions import st
 DESCRIPTION_HOOK_NAME = 'hook_update_variable_description'
 
 
+def steps_to_dict(intermediate_steps: List[Tuple[AgentAction, str]]):
+    list = []
+    for step in intermediate_steps:
+        if isinstance(step[0], AgentAction):
+            list.append(({"tool": step[0].tool, "tool_input": step[0].tool_input, "log": step[0].log}, step[1]))
+            if isinstance(list[-1][0]['tool_input'], dict):
+                if 'current_step' in list[-1][0]['tool_input']:
+                    list[-1][0]['tool_input'].pop('current_step')
+                if 'run_manager' in list[-1][0]['tool_input']:
+                    list[-1][0]['tool_input'].pop('run_manager')
+                if 'intermediate_steps' in  list[-1][0]['tool_input']:
+                    list[-1][0]['tool_input']["intermediate_steps"] = steps_to_dict(list[-1][0]['tool_input']["intermediate_steps"])
+        else:
+            list.append(step)
+    return list
+
 class DescriptionHookInserter(cst.CSTTransformer):
     def leave_SimpleStatementLine(self, old_node, updated_node):
         if isinstance(updated_node.body[0], cst.Assign) and isinstance(updated_node.body[0].targets[0].target,
@@ -192,9 +208,8 @@ class HumanTool(BaseTool):
             tool_input = copy(current_step.tool_input)
             tool_input.pop('current_step')
             tool_input.pop('run_manager')
-            intermediate_step_list = []
-            for step in intermediate_steps:
-                intermediate_step_list.append(({"tool": step[0].tool, "tool_input": step[0].tool_input, "log": step[0].log}, step[1]))
+            intermediate_step_list = steps_to_dict(intermediate_steps)
+            tool_input['intermediate_steps'] = intermediate_step_list
             self.query_queue.put({'question': query, 'inputs': inputs, 'intermediate_steps': intermediate_step_list, 'current_step': {'tool':"interact_with_human", 'tool_input':tool_input, 'log':current_step.log}, 'store_in_history': store_in_history})
         reply = self.answer_queue.get()
         return reply

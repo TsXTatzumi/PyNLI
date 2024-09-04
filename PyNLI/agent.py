@@ -12,7 +12,7 @@ from langchain.output_parsers import PydanticOutputParser
 from langchain_community.callbacks import get_openai_callback
 from langchain_openai import ChatOpenAI
 from langchain_core.agents import AgentAction, AgentFinish
-from langchain_core.callbacks import CallbackManagerForChainRun, AsyncCallbackManagerForChainRun, Callbacks
+from langchain_core.callbacks import CallbackManagerForChainRun, Callbacks
 from langchain_core.prompts import PromptTemplate
 from langchain_core.tools import Tool
 from langchain_core.utils import get_color_mapping
@@ -21,7 +21,7 @@ from pydantic import Field, BaseModel
 from .prompts import get_agent_template, get_yes_no_template, get_detect_loop_template
 from .sessions import st
 from .config import default_config as config
-from .tools import HumanTool, LookAtVariable, PythonConsoleTool, DESCRIPTION_HOOK_NAME
+from .tools import HumanTool, LookAtVariable, PythonConsoleTool, DESCRIPTION_HOOK_NAME, steps_to_dict
 
 
 class OutputFormat(BaseModel):
@@ -91,6 +91,7 @@ class AgentThread(threading.Thread):
                 else:
                     query = self.query_queue.get()
                 print (query)
+
                 if query != '\\abort\\':
                     output = self.agent.invoke({'input': query})
                     if not self.agent.aborting:
@@ -242,7 +243,7 @@ class CustomAgentExecutor(AgentExecutor):
         for step in intermediate_steps:
             self.intermediate_steps_init.append((AgentAction(tool=step[0]["tool"], tool_input=step[0]["tool_input"], log=step[0]["log"]), step[1]))
 
-        self.current_step = current_step
+        self.current_step = copy(current_step)
         self.reinit = True
 
     def abort(self):
@@ -349,24 +350,25 @@ class CustomAgentExecutor(AgentExecutor):
                     iterations += 1
                     time_elapsed = time.time() - start_time
 
-            progress_statement = 'I think I got stuck in a loop' if self.detect_loop_chain.invoke(self.agent.get_full_inputs(intermediate_steps, **inputs)) else 'I think I am still making progress'
+            if self._should_continue(iterations, time_elapsed):
+                progress_statement = 'I think I got stuck in a loop' if self.detect_loop_chain.invoke(self.agent.get_full_inputs(intermediate_steps, **inputs)) else 'I think I am still making progress'
 
-            action = AgentAction(tool="interact_with_human",
-                                 tool_input={"query": f'I have been working for {iterations} iterations and {progress_statement}. Should I continue?',
-                                             'inputs': copy(inputs),
-                                             'intermediate_steps': copy(intermediate_steps),
-                                             'store_in_history': False},
-                                 log=f"Total iterations until now: {iterations}")
-            action.tool_input['current_step'] = action
+                action = AgentAction(tool="interact_with_human",
+                                     tool_input={"query": f'I have been working for {iterations} iterations and {progress_statement}. Should I continue?',
+                                                 'inputs': copy(inputs),
+                                                 'intermediate_steps': copy(intermediate_steps),
+                                                 'store_in_history': False},
+                                     log=f"Total iterations until now: {iterations}")
+                action.tool_input['current_step'] = action
 
-            answer = self._perform_agent_action(name_to_tool_map, color_mapping, action, run_manager).observation
+                answer = self._perform_agent_action(name_to_tool_map, color_mapping, action, run_manager).observation
 
-            self.confirmed = True
+                self.confirmed = True
 
-            answer_bool = self.interpret_yes_no_chain.invoke({'answer': answer})
-            if not answer_bool:
-                finish = AgentFinish(return_values={'output': '{"complete_command": "' + inputs['input'] + '", "variable_name": "", "statement": "The task has been aborted according to the users request."}'}, log="The task has been aborted according to the users request.")
-                return self._return(inputs, finish, intermediate_steps, run_manager=run_manager)
+                answer_bool = self.interpret_yes_no_chain.invoke({'answer': answer})
+                if not answer_bool:
+                    finish = AgentFinish(return_values={'output': '{"complete_command": "' + inputs['input'] + '", "variable_name": "", "statement": "The task has been aborted according to the users request."}'}, log="The task has been aborted according to the users request.")
+                    return self._return(inputs, finish, intermediate_steps, run_manager=run_manager)
 
         output = self.agent.return_stopped_response(
             self.early_stopping_method, intermediate_steps, **inputs
@@ -391,9 +393,11 @@ class CustomAgentExecutor(AgentExecutor):
         for step in intermediate_steps:
             tool_input = step[0].tool_input
             if isinstance(tool_input, dict):
-                tool_input.pop('current_step')
-                tool_input.pop('run_manager')
-                tool_input.pop('intermediate_steps')
+                if 'current_step' in tool_input:
+                    tool_input.pop('current_step')
+                if 'run_manager' in tool_input:
+                    tool_input.pop('run_manager')
+                tool_input['intermediate_steps'] = steps_to_dict(tool_input['intermediate_steps'])
             intermediate_step_list.append(({"tool": step[0].tool, "tool_input": tool_input, "log": step[0].log}, step[1]))
 
         final_output = super()._return(

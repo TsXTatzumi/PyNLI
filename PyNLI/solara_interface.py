@@ -3,6 +3,7 @@ import pickle
 import sys
 import asyncio
 import time
+from copy import copy
 from pathlib import Path
 
 import markdown
@@ -32,6 +33,7 @@ def get_data_container(key):
 
     if 'messages' not in st.session_state[key]:
         st.session_state[key].messages = []
+        st.session_state[key].full_history = [[]]
     if 'code' not in st.session_state[key]:
         st.session_state[key].code = ""
     if "tabla_of_variables" not in st.session_state[key]:
@@ -46,6 +48,7 @@ def get_data_container(key):
         st.session_state[key].module_checkbox_values = {}
     if 'force_update' not in st.session_state[key]:
         st.session_state[key].force_update = Multicast()
+        st.session_state[key].force_update.add(lambda :save_full_history(st.session_state[key]))
     if "chat_width" not in st.session_state[key]:
         st.session_state[key].chat_width = solara.Reactive(0.5)
     if "function" not in st.session_state[key]:
@@ -111,6 +114,8 @@ def undo_chat(data, index):
 
         data.force_update()
 
+        data.full_history.append(copy(data.messages))
+
     return undo_chat
 
 def load_files(data, files: List[FileInfo]):
@@ -164,11 +169,14 @@ def load_files(data, files: List[FileInfo]):
 
             data.agent_thread.agent.abort()
 
+        data.full_history.append(copy(data.messages))
+
     data.force_update()
 
     for file in files:
         if not file['name'].endswith(".chat"):
             data.messages.append(SystemMessage(file=file))
+            data.full_history[-1].append(SystemMessage(file=file))
             load_data_file(file)
             data.force_update()
 
@@ -396,6 +404,12 @@ def get_session_data(data: DataContainer):
     return dumps
 
 
+def save_full_history(data: DataContainer ):
+    with open(f"{data.key}.history", "wb") as file:
+        pickle.dump({"full_history": data.full_history, "generated_function":
+            (data.function.value.code if data.function.value != None and "code" in data.function.value else None)}, file)
+
+
 @solara.component
 def Chat(data: DataContainer):
     is_initialized, set_is_initialized = solara.use_state(False)
@@ -414,6 +428,7 @@ def Chat(data: DataContainer):
 
     def append_message(message):
         data.messages.append(message)
+        data.full_history[-1].append(message)
         force_update()
 
     async def process_user_message():

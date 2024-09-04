@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='Py2NL',
-    version='0.1.5',
+    version='0.1.7.1',
     description='A natural language interface for Python',
     url='https://github.com/TsXTatzumi/PyNLI',
     author='Simeon Quant',

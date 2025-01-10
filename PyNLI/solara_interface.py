@@ -512,16 +512,22 @@ def Chat(data: DataContainer):
                                 for varname in varnames:
                                     if varname in data.vars:
                                         with solara.lab.Tab(varname):
-                                            if isinstance(data.vars[varname], str) and len(data.vars[varname]) > 1500:
-                                                solara.Markdown(f'{data.vars[varname][:1500]}[...]')
-                                            else:
-                                                solara.display(data.vars[varname])
+                                            display(data.vars[varname])
 
         if task.pending:
             solara.ProgressLinear()
         solara.lab.ChatInput(send_callback=send, disabled=task.pending)
 
     set_is_initialized(True)
+
+
+def display(variable):
+    if isinstance(variable, str) and len(variable) > 1500:
+        solara.Markdown(f'{variable[:1500]}[...]')
+    if isinstance(variable, PIL.Image.Image) or (isinstance(variable, np.ndarray) and len(variable.shape) == 3 and variable.shape[2] == 3):
+        solara.Image(variable)
+    else:
+        solara.display(variable)
 
 
 def make_chat(key):

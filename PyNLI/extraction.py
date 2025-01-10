@@ -338,7 +338,7 @@ def extract_function(code, function_name, inputs, outputs, try_optimize=True):
                 if contained_occurrence[:2] not in inputs and not (contained_occurrence[usage_index] == Usage.SET and isinstance(parents[statement], cst.Module)):
                     # Get the most recent previous occurrence and add it to the relevant occurrences
                     occurrence = get_previous_occurrence(occurrences_by_name, contained_occurrence, name_index,
-                                                         usage_index, try_optimize)
+                                                         node_index, usage_index, try_optimize)
 
                     if occurrence is not None:
                         if occurrence[:2] not in inputs:
@@ -369,10 +369,10 @@ def extract_function(code, function_name, inputs, outputs, try_optimize=True):
     return inputs, extracted.code
 
 
-def get_previous_occurrence(occurrences_by_name, occurrence, name_index, usage_index, try_optimize):
+def get_previous_occurrence(occurrences_by_name, occurrence, name_index, node_index, usage_index, try_optimize):
     previous_occurrence = None
     for occurrence_2 in occurrences_by_name[occurrence[name_index]]:
-        if occurrence_2 == occurrence:
+        if occurrence_2 == occurrence or (previous_occurrence is not None and isinstance(previous_occurrence[node_index], (cst.Import, cst.ImportFrom))):
             break
         else:
             if try_optimize and occurrence_2[usage_index] == Usage.PASS:
@@ -391,3 +391,28 @@ def get_statement(node, parents, outermost = False):
         node = parents[node]
     return ret
 
+code = '''import numpy as np
+import cv2 as cv
+# Since importing within the Python Command is not allowed and the necessary modules (cv2 and np) are already available as cv and np, I will use these existing module references to perform the task. I will calculate the kernel size and apply the Gaussian filter using the cv (OpenCV) module.
+# Calculate the kernel size, it should be an odd number
+standard_deviation = np.sqrt(3)
+kernel_size = int(6 * standard_deviation + 1)
+if kernel_size % 2 == 0:
+    kernel_size += 1  # Ensure kernel size is odd
+
+# Convert PIL image to numpy array
+image_array = np.array(image)
+
+# Apply Gaussian Blur to the image
+filtered_image = cv.GaussianBlur(image_array, (kernel_size, kernel_size), standard_deviation)  # filtered_image: image after applying Gaussian filter
+lower_limit = -15  # lower_limit: setting the lower limit to -15
+grayscale_filtered_image = cv.cvtColor(filtered_image, cv.COLOR_RGB2GRAY)  # grayscale_filtered_image: grayscale version of the filtered image
+red_channel = filtered_image[:, :, 0]  # red_channel: extract the red channel from the image array
+subtracted_image = grayscale_filtered_image.astype(np.int16) - red_channel.astype(np.int16)  # subtracted_image: subtract red channel from grayscale image
+clamped_image = np.maximum(subtracted_image, lower_limit)  # clamped_image: clamp the values using the lower limit
+normalized_image = ((clamped_image - clamped_image.min()) * (255 / (clamped_image.max() - clamped_image.min()))).astype(np.uint8)  # normalized_image: normalize the clamped image
+normalized_image_pil = PIL.Image.fromarray(normalized_image.astype('uint8'))  # normalized_image_pil: convert the normalized NumPy array to a PIL image'''
+
+extr = extract_function(code, 'filter', [('standard_deviation', 5), ("image_array", 11)], [('normalized_image', 20)])
+
+print(extr)
